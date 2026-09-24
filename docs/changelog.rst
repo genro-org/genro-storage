@@ -6,6 +6,49 @@ All notable changes to genro-storage will be documented here.
 The format is based on `Keep a Changelog <https://keepachangelog.com/en/1.0.0/>`_,
 and this project adheres to `Semantic Versioning <https://semver.org/spec/v2.0.0.html>`_.
 
+Unreleased
+----------
+
+Added
+~~~~~
+
+- New optional extra ``genro-storage[github]``. fsspec's github filesystem
+  imports ``requests``, which the base install never pulled in, so a GitHub
+  mount failed with ``ImportError`` unless the ``gcs`` or ``azure`` extra
+  happened to be installed. ``requests`` joins ``all`` as well.
+- ``tests/test_async.py``: the async branch of ``@smartasync``, as real
+  coroutines — reads, writes, stat, directories, cross-mount copy, delete,
+  concurrent writes and an encrypted round trip.
+
+Removed
+~~~~~~~
+
+- The ``--async-mode`` pytest flag. It wrapped each sync test body in
+  ``asyncio.to_thread``, which runs it on a worker thread with no event loop:
+  ``is_async_context()`` was False there, so the sync branch executed and the
+  flag verified nothing about async.
+
+Fixed (documentation)
+~~~~~~~~~~~~~~~~~~~~~
+
+- The README announced version 0.4.3, October 2025 and the **MIT** license; the
+  license has been Apache-2.0 since 0.4.4. ``CONTRIBUTING.md`` and
+  ``docs/contributing.rst`` carried the same MIT claim.
+- Git Flow is documented as retired: ``develop`` was removed on 2026-07-30, and
+  ``CONTRIBUTING.md``, ``.github/WORKFLOW.md`` and the CI triggers still
+  described it. The branch protection rules now match what the GitHub API
+  actually reports.
+- The release process pointed at ``pyproject.toml`` for the version bump, which
+  is ``dynamic``: the single source is ``__version__`` in
+  ``src/genro_storage/__init__.py``.
+- Dead links: ``API_DESIGN.md`` (parked in ``doc_to_review/`` at 0.7.0) and
+  ``CHANGELOG.md`` at the repository root, the latter linked from every
+  generated GitHub release note.
+- The Binder badge was removed: no dependency file has ever existed for it, so
+  the environment it launched could not import the package.
+- 0.4.3 and 0.4.4 are documented below, and 0.4.1/0.4.2 are marked as the
+  unreleased milestones they were.
+
 0.8.0 - July 2026
 -----------------
 
@@ -124,6 +167,62 @@ Dependencies
   sub-builder by reference).
 - ``genro-bag>=0.20.1`` added as a direct dependency (0.20.0 imports
   ``typing_extensions`` without declaring it, so a clean install fails).
+
+0.4.4 - November 2025
+---------------------
+
+Changed
+~~~~~~~
+
+- **Breaking (licensing)**: the project moved from the MIT License to the
+  **Apache License 2.0**, with an ``SPDX-License-Identifier`` header on every
+  module. The README and the contributing guides kept announcing MIT until
+  0.8.0; the ``LICENSE`` file has been Apache-2.0 since this release.
+- Capabilities are auto-derived per protocol: the ``@capability`` decorator
+  populates ``PROTOCOL_CAPABILITIES``, and ``get_capabilities(protocol)`` is the
+  single entry point for single- and multi-protocol backends alike. Declaring a
+  capability twice is no longer possible.
+
+Added
+~~~~~
+
+- Test infrastructure that starts what it needs: ``scripts/start_test_services.sh``
+  and ``stop_test_services.sh``, a ``Makefile`` with ``test`` / ``test-unit`` /
+  ``test-integration`` / ``test-all``, and service-backed tests that skip on a
+  port check instead of failing when a service is down.
+- ``api_introspection``, a JSON description of the public surface derived from
+  the decorated methods. Removed again in 0.7.0 together with the
+  ``genro_core`` decorators.
+
+0.4.3 - October 2025
+--------------------
+
+The first release of the 0.4 line to reach PyPI. It carries everything listed
+under 0.4.1 and 0.4.2 below — those two were development milestones on
+``develop``, never tagged and never published — plus:
+
+Added
+~~~~~
+
+- Native permission control for every backend type (readonly, readwrite,
+  delete), validated against the backend's capabilities at configuration time.
+- Integration tests against Azurite (Azure), fake-gcs-server (GCS) and HTTP,
+  plus wider S3 versioning coverage.
+- Complete coverage for ``RelativeMountBackend`` (75% → 96%) and
+  ``BackendCapabilities`` (88% → 100%). Overall: 79% → 85%.
+
+Changed
+~~~~~~~
+
+- CI starts the full set of Docker services for the integration job, on
+  ``docker compose`` v2 syntax; health checks for the optional services no
+  longer block the run.
+
+.. note::
+
+   0.4.1 and 0.4.2 were never released: there is no tag, no GitHub release and
+   no PyPI artifact for either. Their entries are kept below because they
+   describe real work — it simply reached users with 0.4.3.
 
 0.4.2 - October 2025
 --------------------

@@ -1,16 +1,13 @@
 # genro-storage Interactive Tutorials
 
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/genropy/genro-storage/main?filepath=notebooks)
-
-Welcome! These Jupyter notebooks provide hands-on, interactive tutorials for learning genro-storage.
+Welcome! These Jupyter notebooks provide hands-on, interactive tutorials for
+learning genro-storage. They are executed by the test suite
+(`tests/test_notebooks.py`) on every run, so what they show is what the current
+release does.
 
 ## 🚀 Quick Start
 
-### Option 1: Run Online (Easiest)
-
-**Click the Binder badge above** ☝️ to launch an interactive Jupyter environment in your browser. No installation required!
-
-### Option 2: Run Locally
+### Option 1: Run Locally
 
 ```bash
 # Install genro-storage and Jupyter
@@ -22,14 +19,14 @@ jupyter notebook
 # Open 01_quickstart.ipynb and start learning!
 ```
 
-### Option 3: Run From a Clone, Without Installing
+### Option 2: Run From a Clone, Without Installing
 
-The package lives in `src/`, so pointing `PYTHONPATH` at it is enough. Its three
+The package lives in `src/`, so pointing `PYTHONPATH` at it is enough. Its
 runtime dependencies still have to be there — only genro-storage itself is not
 installed:
 
 ```bash
-pip install jupyter notebook fsspec PyYAML genro-toolbox
+pip install jupyter notebook fsspec PyYAML genro-toolbox genro-builders genro-bag
 PYTHONPATH=../src jupyter notebook
 ```
 

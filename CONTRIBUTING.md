@@ -19,43 +19,49 @@ By participating in this project, you agree to maintain a respectful and collabo
 
 ## Git Workflow
 
-We use a **Git Flow** workflow with protected branches to ensure code quality and stability.
+We work on a **single long-lived branch**. `main` carries the releases; every
+change arrives through a short-lived topic branch that is deleted once merged.
+The Git Flow model this project used until 0.4.3 is retired: `develop` was
+removed on 2026-07-30, and release and hotfix branches went with it.
 
 ### Branch Structure
 
-- **`main`**: Production-ready code. Protected branch, requires PR and review.
-- **`develop`**: Integration branch for features. Protected branch, requires PR and review.
-- **`feature/*`**: Feature development branches (e.g., `feature/add-webdav-backend`)
-- **`bugfix/*`**: Bug fixes for develop branch
-- **`hotfix/*`**: Urgent fixes for production (branched from main)
-- **`release/*`**: Release preparation branches
+- **`main`**: the only permanent branch. Releases are tagged here.
+- **topic branches**: short-lived, one per change, named after the kind of work —
+  `feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `chore/`, `hotfix/`. Deleted
+  after the merge.
 
 ### Branch Protection Rules
 
-Both `main` and `develop` branches are protected:
-- **No direct pushes** - All changes must go through Pull Requests
-- **Required reviews** - At least 1 approving review required
-- **No force pushes** - History cannot be rewritten
-- **No deletions** - Branches cannot be deleted
+`main` is protected, but lightly:
+- **No force pushes** - history cannot be rewritten
+- **No deletions** - the branch cannot be removed
+- **Pull requests are the contribution path**, and the place review happens
 
-### Working on Features
+Note what is *not* enforced: there is no required approval count and no required
+status check, and administrators are exempt from the pull request requirement —
+which is how the maintainer lands release commits directly on `main`. If you are
+not an administrator, open a pull request.
 
-1. **Start from develop**:
+### Working on a Change
+
+1. **Start from main**:
    ```bash
-   git checkout develop
-   git pull origin develop
+   git checkout main
+   git pull origin main
    ```
 
-2. **Create a feature branch**:
+2. **Create a topic branch**:
    ```bash
-   git checkout -b feature/your-feature-name
+   git checkout -b feat/your-feature-name
    ```
 
-   Naming conventions:
-   - `feature/add-webdav-backend`
-   - `feature/improve-error-handling`
-   - `bugfix/fix-s3-timeout`
-   - `hotfix/critical-security-fix`
+   Naming conventions — the prefix matches the commit type:
+   - `feat/add-webdav-backend`
+   - `fix/s3-timeout`
+   - `docs/encryption-guide`
+   - `chore/bump-github-actions`
+   - `hotfix/ci-green`
 
 3. **Make your changes**:
    - Write clean, documented code
@@ -82,56 +88,38 @@ Both `main` and `develop` branches are protected:
    ```
 
 6. **Create a Pull Request**:
-   - Go to GitHub and create a PR from your feature branch to `develop`
+   - Open a PR from your topic branch against `main`
    - Fill in the PR template with a clear description
    - Link related issues (e.g., "Closes #15")
    - Wait for review and address feedback
+   - Delete the branch once it is merged
 
 ### Release Process
 
-When ready to release a new version:
+Releases are cut on `main`; there is no release branch.
 
-1. **Create release branch** from `develop`:
-   ```bash
-   git checkout develop
-   git checkout -b release/0.5.0
-   ```
+1. **Bump the version** in `src/genro_storage/__init__.py`. That `__version__` is
+   the single source of truth — `pyproject.toml` reads it through
+   `[tool.hatch.version]`, so there is no second place to edit.
 
-2. **Prepare release**:
-   - Update version in `pyproject.toml`
-   - Update `CHANGELOG.md`
-   - Create release announcement
-   - Run full test suite
+2. **Add the changelog entry** in `docs/changelog.rst`, newest first.
 
-3. **Merge to main**:
-   - Create PR from `release/0.5.0` to `main`
-   - After approval and merge, tag the release:
+3. **Run the full suite** with the Docker services up (see [TESTING.md](TESTING.md)).
+
+4. **Tag on `main`**: pushing a `v*` tag is what triggers the release workflow
+   and the PyPI publish.
    ```bash
    git checkout main
-   git tag -a v0.5.0 -m "Release version 0.5.0"
-   git push origin v0.5.0
+   git pull origin main
+   git tag -a v0.9.0 -m "Release version 0.9.0"
+   git push origin v0.9.0
    ```
 
-4. **Merge back to develop**:
-   - Create PR from `main` to `develop` to sync changes
-   - Delete release branch after merge
+### Urgent Fixes
 
-### Hotfix Process
-
-For critical production issues:
-
-1. **Branch from main**:
-   ```bash
-   git checkout main
-   git checkout -b hotfix/critical-issue
-   ```
-
-2. **Fix and test** thoroughly
-
-3. **Merge to both main and develop**:
-   - Create PR to `main` first
-   - After merge, create PR to `develop`
-   - Tag the hotfix version
+There is no separate hotfix flow: `main` is the release branch, so an urgent fix
+is an ordinary topic branch — `hotfix/` by convention — merged into `main` and
+followed by a patch tag if it needs to ship immediately.
 
 ## Development Setup
 
@@ -177,13 +165,13 @@ For critical production issues:
 
 ```bash
 # Format code
-black genro_storage/ tests/
+black src/genro_storage/ tests/
 
 # Lint
-ruff check genro_storage/ tests/
+ruff check src/genro_storage/ tests/
 
-# Type check
-mypy genro_storage/
+# Type check (advisory, never a gate - see the mypy config in pyproject.toml)
+mypy
 ```
 
 ## Testing Guidelines
@@ -220,7 +208,7 @@ pytest tests/ -v -m "not integration"
 
 1. **Update documentation** for any user-facing changes
 2. **Add tests** for new functionality
-3. **Update CHANGELOG.md** with your changes
+3. **Update `docs/changelog.rst`** with your changes
 4. **Ensure all tests pass** and coverage is maintained
 5. **Request review** from maintainers
 6. **Address feedback** promptly and professionally
@@ -231,7 +219,7 @@ pytest tests/ -v -m "not integration"
 - [ ] Code follows project style guidelines
 - [ ] Tests added/updated and passing
 - [ ] Documentation updated
-- [ ] CHANGELOG.md updated
+- [ ] `docs/changelog.rst` updated
 - [ ] Commits follow conventional commit format
 - [ ] PR description clearly explains the changes
 - [ ] Related issues linked
@@ -259,7 +247,7 @@ make html
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+By contributing, you agree that your contributions will be licensed under the Apache License 2.0.
 
 ---
 

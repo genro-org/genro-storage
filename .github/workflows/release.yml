@@ -123,7 +123,7 @@ jobs:
         cat > release_notes.md << 'EOF'
         ## What's Changed
         
-        See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for full details.
+        See the [changelog](https://genro-storage.readthedocs.io/en/latest/changelog.html) for full details.
         
         ## Installation
         

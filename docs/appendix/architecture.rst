@@ -696,7 +696,10 @@ Design Principles Applied
 Performance Benchmarks
 ----------------------
 
-Based on test suite (411 tests, 85% coverage):
+Indicative orders of magnitude observed while developing the library, not
+measurements produced by the test suite — there is no benchmark suite in the
+repository, so treat every figure below as a rough expectation rather than a
+guarantee:
 
 **Operation Speed** (local filesystem):
 
@@ -752,8 +755,8 @@ genro-storage provides a clean, extensible architecture for universal storage ab
 - **Layered Design**: Clear separation of concerns
 - **Extensible**: Easy to add new backends and features
 - **Performant**: Optimized for common operations
-- **Well-Tested**: 85% coverage with 411 tests
-- **Production-Ready**: Based on 6+ years of Genropy production use
+- **Well-Tested**: 87% coverage with 572 tests
+- **Production-Ready**: Based on the Genropy storage layer, in production since 2018
 
 The architecture balances:
 

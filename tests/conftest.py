@@ -4,17 +4,15 @@ This module provides fixtures to set up and tear down MinIO for integration test
 MinIO provides a local S3-compatible object storage for testing.
 
 Async Testing Support:
-    By default, tests run in sync mode. Use --async-mode to run in async context:
-
-    # Run sync tests (default)
-    pytest tests/
-
-    # Run async tests (verifies smartasync works in async context)
-    pytest tests/ --async-mode
+    The async branch of ``@smartasync`` lives in ``test_async.py``, as real
+    coroutines. There is deliberately no flag to re-run the sync suite "in async
+    mode": the only way to do that would be to push each sync test body onto a
+    worker thread, where no event loop runs, so ``is_async_context()`` is False
+    and the sync branch executes anyway. A ``--async-mode`` flag doing exactly
+    that used to live here; it was removed because it verified nothing.
 """
 
 import pytest
-import asyncio
 import boto3
 from botocore.exceptions import ClientError
 import time
@@ -22,61 +20,6 @@ import os
 import tempfile
 import shutil
 import socket
-
-
-# =============================================================================
-# Async Mode Support
-# =============================================================================
-
-def pytest_addoption(parser):
-    """Add --async-mode option to pytest."""
-    parser.addoption(
-        "--async-mode",
-        action="store_true",
-        default=False,
-        help="Run tests in async context (wraps sync calls in asyncio.to_thread)",
-    )
-
-
-@pytest.fixture(scope="session")
-def async_mode(request):
-    """Return True if running in async mode."""
-    return request.config.getoption("--async-mode")
-
-
-@pytest.fixture(autouse=True)
-def run_in_async_context(request, async_mode):
-    """Wrap test execution in async context if --async-mode is set."""
-    if not async_mode:
-        # Sync mode: run test normally
-        yield
-        return
-
-    # Async mode: wrap the test in an event loop
-    # This makes smartasync detect async context and use asyncio.to_thread
-    item = request.node
-
-    # Skip if test is already async
-    if asyncio.iscoroutinefunction(item.obj):
-        yield
-        return
-
-    # Store original test function
-    original_func = item.obj
-
-    async def async_wrapper(*args, **kwargs):
-        """Run sync test inside async context via to_thread."""
-        return await asyncio.to_thread(original_func, *args, **kwargs)
-
-    def sync_runner(*args, **kwargs):
-        """Entry point that runs the async wrapper."""
-        return asyncio.run(async_wrapper(*args, **kwargs))
-
-    # Replace test function
-    item.obj = sync_runner
-    yield
-    # Restore (not strictly necessary but clean)
-    item.obj = original_func
 
 
 def is_service_available(host, port, timeout=1):

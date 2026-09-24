@@ -42,8 +42,8 @@ Relates to #
 
 - [ ] Updated docstrings
 - [ ] Updated README.md (if needed)
-- [ ] Updated API_DESIGN.md (if API changed)
-- [ ] Updated CHANGELOG.md
+- [ ] Updated `docs/` (if the API changed)
+- [ ] Updated `docs/changelog.rst`
 
 ## Checklist
 

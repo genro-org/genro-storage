@@ -39,7 +39,9 @@ make help
 tests/
 ├── conftest.py                     # Shared fixtures and helpers
 ├── test_local_storage.py           # Unit tests (no Docker)
-├── test_memory_storage.py          # Unit tests (no Docker)
+├── test_config_grammar.py          # Unit tests, StorageConfig grammar (no Docker)
+├── test_encryption.py              # Unit tests, at-rest encryption (no Docker)
+├── test_notebooks.py               # Executes the notebooks/ tutorials (no Docker)
 ├── test_s3_integration.py          # Integration tests (requires MinIO)
 ├── test_additional_backends.py     # Integration tests (GCS, WebDAV, Azure)
 ├── test_new_backends.py            # Integration tests (SMB, SFTP)

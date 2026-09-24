@@ -1,172 +1,143 @@
-# Git Flow Workflow - genro-storage
+# Git Workflow - genro-storage
 
 ## Overview
 
-genro-storage uses **Git Flow** with protected branches to ensure code quality and stable releases.
+genro-storage works on a **single long-lived branch**. `main` carries the
+releases; every change arrives through a short-lived topic branch that is deleted
+once merged.
+
+The Git Flow model this project used until 0.4.3 is retired. `develop` was
+removed on 2026-07-30, and the release and hotfix branches went with it: since
+0.7.0 every commit has landed on `main` directly or through a single pull request
+against it.
 
 ## Branch Structure
 
 ```
 main (protected)
   ↑
-  └── PR required
+  └── PR (or a direct push, for administrators)
        ↑
-    develop (protected)
-      ↑
-      └── PR required
-           ↑
-        feature/*
-        bugfix/*
+    feat/*  fix/*  docs/*  refactor/*  test/*  chore/*  hotfix/*
 ```
 
 ### Branch Purposes
 
-| Branch | Purpose | Protected | Merges From | Merges To |
-|--------|---------|-----------|-------------|-----------|
-| `main` | Production releases | ✅ Yes | `develop` (via release), `hotfix/*` | - |
-| `develop` | Integration, next release | ✅ Yes | `feature/*`, `bugfix/*` | `main` (via release) |
-| `feature/*` | New features | ❌ No | - | `develop` |
-| `bugfix/*` | Bug fixes | ❌ No | - | `develop` |
-| `hotfix/*` | Critical production fixes | ❌ No | `main` | `main` + `develop` |
-| `release/*` | Release preparation | ❌ No | `develop` | `main` + `develop` |
+| Branch | Purpose | Protected | Lifetime |
+|--------|---------|-----------|----------|
+| `main` | Releases, tagged `v*` | ✅ Yes | permanent |
+| `feat/*` | New features | ❌ No | deleted after merge |
+| `fix/*` | Bug fixes | ❌ No | deleted after merge |
+| `docs/*` | Documentation only | ❌ No | deleted after merge |
+| `refactor/*`, `test/*`, `chore/*` | Everything else, prefix matching the commit type | ❌ No | deleted after merge |
+| `hotfix/*` | Urgent fix that ships immediately | ❌ No | deleted after merge |
+
+There is no `develop`, no `release/*` and no merge-back step.
 
 ## Protection Rules
 
-Both `main` and `develop` are protected with:
-- ✅ Require pull request before merging
-- ✅ Require 1 approving review
-- ✅ Dismiss stale pull request approvals when new commits are pushed
+`main` is protected, but lightly. What is enforced:
+
 - ❌ No force pushes
 - ❌ No deletions
-- ✅ Linear history not required (allows merge commits)
+
+What is **not** enforced, and is worth knowing before you rely on it:
+
+- No required approving reviews (`required_approving_review_count` is 0)
+- No required status checks — a red CI run does not block a merge
+- Administrators are exempt from the pull request requirement
+  (`enforce_admins` is off), which is how the maintainer lands release commits
+  straight on `main`
+
+Read the live settings rather than trusting this table:
+
+```bash
+gh api repos/genropy/genro-storage/branches/main/protection
+```
 
 ## Common Workflows
 
-### 1. Working on a Feature
+### 1. Working on a Change
 
 ```bash
-# Start from develop
-git checkout develop
-git pull origin develop
+# Start from main
+git checkout main
+git pull origin main
 
-# Create feature branch
-git checkout -b feature/add-webdav-backend
+# Create a topic branch, prefix matching the commit type
+git checkout -b feat/add-webdav-backend
 
 # Make changes, commit
 git add .
 git commit -m "feat: add WebDAV backend support"
 
-# Push and create PR to develop
-git push origin feature/add-webdav-backend
-gh pr create --base develop --head feature/add-webdav-backend
+# Push and open a PR against main
+git push origin feat/add-webdav-backend
+gh pr create --base main --head feat/add-webdav-backend
+
+# After the merge, delete the branch
+git push origin --delete feat/add-webdav-backend
 ```
 
-### 2. Fixing a Bug
+### 2. Cutting a Release
 
 ```bash
-# Start from develop
-git checkout develop
-git pull origin develop
-
-# Create bugfix branch
-git checkout -b bugfix/fix-s3-timeout
-
-# Make changes, commit
-git add .
-git commit -m "fix: increase S3 connection timeout"
-
-# Push and create PR to develop
-git push origin bugfix/fix-s3-timeout
-gh pr create --base develop --head bugfix/fix-s3-timeout
-```
-
-### 3. Creating a Release
-
-```bash
-# Create release branch from develop
-git checkout develop
-git pull origin develop
-git checkout -b release/0.5.0
-
-# Update version and changelog
-vim pyproject.toml  # Update version
-vim CHANGELOG.md    # Add release notes
-
-# Commit release prep
-git add .
-git commit -m "chore: prepare release 0.5.0"
-
-# Push and create PR to main
-git push origin release/0.5.0
-gh pr create --base main --head release/0.5.0 \
-  --title "Release v0.5.0" \
-  --body "Release version 0.5.0 with new features..."
-
-# After PR approval and merge to main:
 git checkout main
 git pull origin main
-git tag -a v0.5.0 -m "Release version 0.5.0"
-git push origin v0.5.0
 
-# Merge back to develop
-gh pr create --base develop --head main \
-  --title "Merge release 0.5.0 back to develop"
+# Bump the single source of truth: __version__ in the package itself.
+# pyproject.toml reads it through [tool.hatch.version] - there is no second place.
+vim src/genro_storage/__init__.py
 
-# Delete release branch
-git branch -d release/0.5.0
-git push origin --delete release/0.5.0
+# Add the entry, newest first
+vim docs/changelog.rst
+
+git add .
+git commit -m "chore: release 0.9.0"
+git push origin main
+
+# The v* tag is what triggers .github/workflows/release.yml and the PyPI publish
+git tag -a v0.9.0 -m "Release version 0.9.0"
+git push origin v0.9.0
 ```
 
-### 4. Hotfix for Production
+Run the full suite with the Docker services up before tagging — see
+[TESTING.md](../TESTING.md). CI does not gate the merge, so this check is yours.
+
+### 3. Urgent Fix
+
+No separate flow: `main` is the release branch, so an urgent fix is an ordinary
+topic branch, `hotfix/` by convention, followed by a patch tag if it has to ship
+straight away.
 
 ```bash
-# Branch from main
 git checkout main
 git pull origin main
 git checkout -b hotfix/critical-security-fix
 
-# Fix issue
 git add .
 git commit -m "fix: patch critical security vulnerability"
-
-# Push and create PR to main
 git push origin hotfix/critical-security-fix
+
 gh pr create --base main --head hotfix/critical-security-fix \
   --title "HOTFIX: Critical security patch"
 
-# After merge to main, also merge to develop
-gh pr create --base develop --head hotfix/critical-security-fix \
-  --title "Merge hotfix to develop"
-
-# Tag hotfix version
+# After the merge
 git checkout main
 git pull origin main
-git tag -a v0.4.2 -m "Hotfix: security patch"
-git push origin v0.4.2
+git tag -a v0.8.1 -m "Hotfix: security patch"
+git push origin v0.8.1
 ```
 
 ## Pull Request Guidelines
 
-### PR to `develop`
+Every PR targets `main`. Requirements:
 
-- Base: `develop`
-- Source: `feature/*` or `bugfix/*`
-- Requirements:
-  - All tests pass
-  - Code coverage maintained
-  - Documentation updated
-  - 1 approving review
-
-### PR to `main`
-
-- Base: `main`
-- Source: `release/*` or `hotfix/*`
-- Requirements:
-  - All tests pass
-  - Version updated in `pyproject.toml`
-  - CHANGELOG.md updated
-  - Release notes prepared
-  - 1 approving review
+- All tests pass, with the Docker services running for the integration ones
+- Coverage maintained
+- Docstrings and `docs/` updated for user-facing changes
+- `docs/changelog.rst` updated
+- Conventional commit messages
 
 ## Commit Message Convention
 
@@ -190,20 +161,16 @@ Types:
 - `chore:` - Maintenance tasks
 - `perf:` - Performance improvements
 
+A `!` after the type marks a breaking change (`refactor!:`, `feat!:`).
+
 Examples:
 ```
 feat: add WebDAV backend support
 fix: resolve S3 timeout issue in large file uploads
 docs: update contributing guidelines
-chore: prepare release 0.5.0
+feat!: per-node encryption with a self-describing envelope
+chore: release 0.9.0
 ```
-
-## Bypassing Protection (Admins Only)
-
-Admins can push directly to protected branches, but **should not**:
-- Use this only for emergency hotfixes
-- Document the reason in commit message
-- Create a follow-up PR for review
 
 ## Tools
 
@@ -211,58 +178,49 @@ Admins can push directly to protected branches, but **should not**:
 
 ```bash
 # Create PR
-gh pr create --base develop --head feature/my-feature
+gh pr create --base main --head feat/my-feature
 
 # List PRs
 gh pr list
 
 # Review PR
-gh pr review 22 --approve
-gh pr review 22 --comment -b "Looks good!"
-gh pr review 22 --request-changes -b "Please fix..."
+gh pr review 74 --approve
+gh pr review 74 --comment -b "Looks good!"
+gh pr review 74 --request-changes -b "Please fix..."
 
 # Merge PR
-gh pr merge 22
-```
+gh pr merge 74
 
-### Check Protection Status
-
-```bash
-# View branch protection
-gh api repos/genropy/genro-storage/branches/main/protection
-
-# View branch protection for develop
-gh api repos/genropy/genro-storage/branches/develop/protection
+# Clean up local branches whose remote is gone
+git fetch --prune
+git branch -vv | grep ': gone]'
 ```
 
 ## Troubleshooting
 
 ### "Protected branch update failed"
 
-This means you tried to push directly to `main` or `develop`. Create a PR instead.
-
-### "Pull request reviews required"
-
-You need at least 1 approving review before merging. Request review from maintainers.
+You tried to force-push to `main`, or to delete it. Neither is allowed; a plain
+push is, for administrators.
 
 ### Merge conflicts
 
 ```bash
-# Update your feature branch with latest develop
-git checkout feature/my-feature
+# Update your topic branch with the latest main
+git checkout feat/my-feature
 git fetch origin
-git merge origin/develop
+git merge origin/main
 # Resolve conflicts
 git add .
-git commit -m "merge: resolve conflicts with develop"
-git push origin feature/my-feature
+git commit -m "merge: resolve conflicts with main"
+git push origin feat/my-feature
 ```
 
 ## Resources
 
 - [CONTRIBUTING.md](../CONTRIBUTING.md) - Full contribution guide
+- [TESTING.md](../TESTING.md) - Running the suite, with and without Docker
 - [Conventional Commits](https://www.conventionalcommits.org/)
-- [Git Flow](https://nvie.com/posts/a-successful-git-branching-model/)
 - [GitHub Protected Branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches)
 
 ---

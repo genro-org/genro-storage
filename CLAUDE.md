@@ -17,7 +17,7 @@ Read the parent document first for:
 - **Has Implementation Code**: Yes
 - **Version**: 0.8.0
 - **Python Support**: 3.11, 3.12, 3.13
-- **Test Coverage**: 86% (558 tests: 544 passing, 14 skipped)
+- **Test Coverage**: 87% (572 tests: 565 passing, 7 skipped, with the Docker services running; 78% without them)
 - **GitHub**: https://github.com/genropy/genro-storage
 
 ### Project Purpose
@@ -28,19 +28,23 @@ Universal storage abstraction for Python with pluggable backends. Provides unifi
 
 ```
 genro-storage/
-├── genro_storage/          # Main package
+├── src/genro_storage/      # Main package
 │   ├── __init__.py        # Public API exports
-│   ├── manager.py         # StorageManager - main entry point
+│   ├── manager.py         # StorageManager - main entry point, at-rest encryption
 │   ├── node.py            # StorageNode - file/directory abstraction
 │   ├── capabilities.py    # Backend capability system
 │   ├── exceptions.py      # Custom exceptions
 │   ├── storage_grammar.py # StorageConfig / StorageGrammar builder grammar
 │   └── backends/          # Storage backend implementations
 │       ├── base.py        # Abstract backend interface
-│       └── fsspec_backend.py  # Unified fsspec-based backend
+│       ├── fsspec.py      # Unified fsspec-based backend
+│       ├── local.py       # Local filesystem, with callable base_path
+│       ├── base64.py      # Inline base64 data, with writable paths
+│       └── relative.py    # Child mount over a parent mount
 ├── tests/                 # Comprehensive test suite
 ├── docs/                  # ReadTheDocs documentation
-├── API_DESIGN.md         # Detailed API specification
+├── notebooks/             # Executable tutorials, run by tests/test_notebooks.py
+├── doc_to_review/         # Pre-0.7.0 documents, parked and unmaintained
 └── TESTING.md            # Testing instructions with MinIO
 ```
 
@@ -50,11 +54,12 @@ genro-storage/
 - Main entry point for the library
 - Manages mount points (named storage backends)
 - Factory for creating StorageNode instances
-- Configuration loading from YAML/JSON/dict
+- Configuration from a `StorageConfig` grammar, a YAML/JSON path, or a list of dicts
+- Owns the at-rest key material and the encrypt/decrypt boundary
 
 **StorageNode** (`node.py`):
 - Represents a file or directory
-- Unified API: `read()`, `write()`, `copy()`, `exists`, `list()`, `call()`, `serve()`
+- Unified API: `read()`, `write()`, `copy_to()`, `exists()`, `children()`, `call()`, `serve()`
 - Intelligent copy strategies: exists, size, hash
 
 **Supported Backends** (15 total):
@@ -72,11 +77,13 @@ genro-storage/
 6. **Cloud Metadata**: Get/set custom metadata on S3, GCS, Azure
 7. **Callable Paths**: Dynamic path resolution at runtime
 8. **Async Support**: the same StorageManager is awaitable from async code via `@smartasync`
+9. **Pythonic Configuration**: `StorageConfig` grammar, one typed `@element` per protocol, `BagResolver` values in place
+10. **Per-file Encryption**: declared at the write site, stored as a `#GNRE1:<domain>` envelope
 
 ### Architecture Notes
 
 - Built on fsspec for battle-tested storage backends
-- Originated from Genropy framework (19+ years in production, storage since 2018)
+- Originated from Genropy framework (in production since 2006, storage since 2018)
 - Type-hinted codebase with full mypy support
 - Available on PyPI
 
@@ -105,9 +112,9 @@ from genro_storage import StorageManager
 
 storage = StorageManager()
 storage.configure([
-    {'name': 'home', 'type': 'local', 'path': '/home/user'},
-    {'name': 'uploads', 'type': 's3', 'bucket': 'my-app-uploads'},
-    {'name': 'backups', 'type': 'gcs', 'bucket': 'my-backups'},
+    {'name': 'home', 'protocol': 'local', 'base_path': '/home/user'},
+    {'name': 'uploads', 'protocol': 's3', 'bucket': 'my-app-uploads'},
+    {'name': 'backups', 'protocol': 'gcs', 'bucket': 'my-backups'},
 ])
 
 # Use mount points
@@ -115,22 +122,38 @@ node = storage.node('uploads:documents/file.pdf')
 content = node.read()
 ```
 
+`type` and `path` were the field names through 0.4.4; they still work but raise a
+`DeprecationWarning` and go away at 1.0. The typed alternative is the grammar:
+
+```python
+from genro_storage import StorageConfig, StorageManager
+
+class MyConfig(StorageConfig):
+    def main(self, root):
+        m = root.mounts()
+        m.local(name='home', base_path='/home/user')
+        m.s3(name='uploads', bucket='my-app-uploads')
+
+storage = StorageManager()
+storage.configure(MyConfig)
+```
+
 ### Development Guidelines
 
 **Code Quality**:
 ```bash
 # Format
-black genro_storage/ tests/
+black src/genro_storage/ tests/
 
 # Lint
-ruff check genro_storage/ tests/
+ruff check src/genro_storage/ tests/
 
-# Type check
-mypy genro_storage/
+# Type check (advisory, never a gate - see the mypy config in pyproject.toml)
+mypy
 ```
 
 **Documentation**:
-- Keep API_DESIGN.md updated for major API changes
+- Keep `docs/` updated for major API changes; the module docstrings carry the contracts
 - Update docstrings for all public methods
 - ReadTheDocs auto-builds from main branch
 
@@ -143,17 +166,24 @@ mypy genro_storage/
 
 - `fsspec>=2023.1.0` - Core backend support
 - `PyYAML>=6.0` - Configuration file support
-- Optional: `s3fs`, `gcsfs`, `adlfs`, `aiohttp`, `smbprotocol`, `paramiko`, `webdav4`, `libarchive-c`, `cryptography`
+- `genro-toolbox` - `@smartasync`, for the transparent sync/async surface
+- `genro-builders>=0.22.0` - the grammar machinery behind `StorageConfig`
+- `genro-bag>=0.20.1` - `BagResolver`, for configuration values that come from outside
+- Optional: `s3fs`, `gcsfs`, `adlfs`, `aiohttp`, `smbprotocol`, `paramiko`, `webdav4`, `libarchive-c`, `pygit2`, `requests`, `cryptography`
 
 ### Related Documentation
 
-- [API Design](https://github.com/genropy/genro-storage/blob/main/API_DESIGN.md)
 - [Testing Guide](https://github.com/genropy/genro-storage/blob/main/TESTING.md)
 - [ReadTheDocs](https://genro-storage.readthedocs.io)
 - [Jupyter Notebooks](https://github.com/genropy/genro-storage/tree/main/notebooks)
 
+`API_DESIGN.md` is no longer at the root: 0.7.0 parked it in `doc_to_review/`
+along with the other pre-src-layout documents. Nothing there is maintained —
+`docs/` and the docstrings are the current specification.
+
 ---
 
-**All general policies are inherited from the parent document: `/Users/gporcari/Sviluppo/genro_ng/CLAUDE.md`**
+**All general policies are inherited from the parent document: the
+[genro-next-generation CLAUDE.md](https://github.com/genropy/genro-next-generation/blob/main/CLAUDE.md)**
 
-**Last Updated**: 2025-10-30
+**Last Updated**: 2026-08-04

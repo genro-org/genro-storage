@@ -4,8 +4,9 @@
 
 # genro-storage
 
+[![PyPI](https://img.shields.io/pypi/v/genro-storage.svg)](https://pypi.org/project/genro-storage/)
 [![Python versions](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Documentation Status](https://readthedocs.org/projects/genro-storage/badge/?version=latest)](https://genro-storage.readthedocs.io/en/latest/?badge=latest)
 [![Tests](https://github.com/genropy/genro-storage/workflows/Tests/badge.svg)](https://github.com/genropy/genro-storage/actions)
 [![codecov](https://codecov.io/gh/genropy/genro-storage/branch/main/graph/badge.svg)](https://codecov.io/gh/genropy/genro-storage)
@@ -18,29 +19,33 @@ A modern, elegant Python library that provides a unified interface for accessing
 ## Documentation
 
 - **[Full Documentation](https://genro-storage.readthedocs.io/)** - Complete API reference and guides
-- **[API Design](API_DESIGN.md)** - Detailed design specification
+- **[API Reference](docs/api_reference.rst)** - Every public method, in the docs tree
+- **[Encryption](docs/encryption.rst)** - At-rest encryption, keys and domains
 - **[Testing Guide](TESTING.md)** - How to run tests with MinIO
 - **[Interactive Tutorials](notebooks/)** - Hands-on Jupyter notebooks
+- **[Changelog](docs/changelog.rst)** - Release history
 
 ## Status: Beta - Ready for Production Testing
 
-**Current Version:** 0.4.3
-**Last Updated:** October 2025
+**Current Version:** 0.8.0
+**Last Updated:** August 2026
 
 - Core implementation complete
 - 15 storage backends working (local, S3, GCS, Azure, HTTP, Memory, Base64, SMB, SFTP, ZIP, TAR, Git, GitHub, WebDAV, LibArchive)
-- 521 tests (507 passing, 14 skipped) with 86% coverage on Python 3.11-3.13
+- 572 tests (565 passing, 7 skipped) with 87% coverage on Python 3.11-3.13
 - Full documentation on ReadTheDocs
-- Battle-tested code from Genropy (19+ years in production, storage abstraction since 2018)
+- Battle-tested code from Genropy (20 years in production, storage abstraction since 2018)
 - Available on PyPI
 
 ## Key Features
 
-- **Async/await support** - Transparent sync/async via `@smartasync` decorator
-- **Native permission control** - Configure readonly, readwrite, or delete permissions for any backend
-- **Powered by fsspec** - Leverage 20+ battle-tested storage backends
 - **Mount point system** - Organize storage with logical names like `home:`, `uploads:`, `s3:`
 - **Intuitive API** - Pathlib-inspired interface that feels natural and Pythonic
+- **Async/await support** - Transparent sync/async via `@smartasync`: the same objects work in both contexts
+- **Pythonic configuration** - Declare mounts as typed method calls with the `StorageConfig` grammar, or load YAML/JSON/dicts
+- **Per-file encryption at rest** - Encrypt at the write site; the stored file is a self-describing envelope
+- **Native permission control** - Configure readonly, readwrite, or delete permissions for any backend
+- **Powered by fsspec** - Leverage 20+ battle-tested storage backends
 - **Intelligent copy strategies** - Skip files by existence, size, or hash for efficient incremental backups
 - **Progress tracking** - Built-in callbacks for progress bars and logging during copy operations
 - **Content-based comparison** - Compare files by MD5 hash across different backends
@@ -48,15 +53,12 @@ A modern, elegant Python library that provides a unified interface for accessing
 - **External tool integration** - `call()` method for seamless integration with ffmpeg, imagemagick, pandoc, etc.
 - **WSGI file serving** - `serve()` method for web frameworks (Flask, Django, Pyramid) with ETag caching
 - **MIME type detection** - Automatic content-type detection from file extensions
-- **Flexible configuration** - Load mounts from YAML, JSON, or code
 - **Dynamic paths** - Support for callable paths that resolve at runtime (perfect for user-specific directories)
 - **Cloud metadata** - Get/set custom metadata on S3, GCS, Azure files
 - **URL generation** - Generate presigned URLs for S3, public URLs for sharing
-- **Base64 utilities** - Encode files to data URIs, download from URLs
+- **Base64 data URIs** - Embed data inline with automatic encoding (writable with mutable paths)
 - **S3 versioning** - Access historical file versions (when S3 versioning enabled)
 - **Test-friendly** - In-memory backend for fast, isolated testing
-- **Base64 data URIs** - Embed data inline with automatic encoding (writable with mutable paths)
-- **Production-ready backends** - Built on 6+ years of Genropy production experience
 - **Lightweight core** - Optional backends installed only when needed
 - **Cross-storage operations** - Copy/move files between different storage types seamlessly
 
@@ -66,8 +68,8 @@ While **fsspec** is powerful, genro-storage provides:
 
 - **Mount point abstraction** - Work with logical names instead of full URIs
 - **Simpler API** - Less verbose, more intuitive for common operations
-- **Configuration management** - Load storage configs from files
-- **Enhanced utilities** - Cross-storage copy, unified error handling
+- **Configuration management** - Load storage configs from files or from a typed grammar
+- **Enhanced utilities** - Cross-storage copy, unified error handling, encryption at rest
 
 Think of it as **"requests" is to "urllib"** - a friendlier interface to an excellent foundation.
 
@@ -128,7 +130,7 @@ s3_image.copy_to(b64_image)
 data_uri = f"data:image/jpeg;base64,{b64_image.path}"
 
 # Advanced features
-# 1. Intelligent incremental backups (NEW!)
+# 1. Intelligent incremental backups
 docs = storage.node('home:documents')
 s3_backup = storage.node('uploads:backup/documents')
 
@@ -203,10 +205,73 @@ remote = storage.node('uploads:downloaded.pdf')
 remote.fill_from_url('https://example.com/file.pdf')
 ```
 
+### Pythonic Configuration
+
+Beyond dicts and YAML, mounts can be declared as typed method calls with the
+`StorageConfig` grammar. The element name *is* the protocol, required fields are
+the parameters without a default, and a wrong value is rejected by the signature
+itself rather than at first use:
+
+```python
+from genro_bag.resolvers import EnvResolver
+from genro_storage import StorageConfig, StorageManager
+
+class MyConfig(StorageConfig):
+    def main(self, root):
+        m = root.mounts(storage_key=EnvResolver('STORAGE_KEY'))
+        m.local(name='home', base_path='/srv/data')
+        m.local(name='secure', base_path='/srv/secure', default_encrypted=True)
+        m.s3(name='uploads', bucket='my-bucket',
+             secret_key=EnvResolver('S3_SECRET'))
+        m.relative(name='public', path='home:public', permissions='readonly')
+
+storage = StorageManager()
+storage.configure(MyConfig)
+```
+
+Values that come from outside the recipe — secrets, endpoints, deployment roots —
+are declared in place as a `BagResolver` and resolved once, at configuration
+time. Hosts that embed storage in a larger document mount the vocabulary alone
+through `StorageManager.grammar`.
+
+### Encryption at Rest
+
+Encryption is per file and declared at the write site. Reads need no
+declaration: the stored bytes carry a self-describing envelope — a
+`#GNRE1:<domain>` header followed by the Fernet token — so encrypted and plain
+files coexist in the same directory.
+
+```python
+storage = StorageManager()
+storage.configure(MyConfig)                 # or storage_key='<fernet-key>'
+
+node = storage.node('secure:token.json')
+node.write_text(payload, encrypted=True)    # default domain
+node.write_text(payload, encrypted='acmespa')  # named domain
+print(node.read_text())                     # decrypted, nothing to declare
+```
+
+Key material is one or more comma-separated Fernet keys, each optionally
+prefixed with `<domain>:`. Keys of the same domain group into one `MultiFernet`:
+the first encrypts, all decrypt, which is how a key is rotated. A mount may
+carry `default_encrypted` as the default for writes that declare nothing — an
+explicit `encrypted=` at the write site wins in both directions.
+
+The coverage boundary is deliberate: the paths that hand out or report on the
+stored bytes directly — `open()`, `local_path()` (and the `call()`/`serve()`
+built on it), `copy_to()`/`move_to()`, versioned reads, `size()`/`md5hash()` —
+carry the envelope verbatim, so an encrypted file stays self-describing wherever
+it lands. There is no silent degradation: a domain with no installed key raises
+rather than writing plaintext.
+
+Encryption is opt-in — with no key material no cipher is ever built and
+`cryptography` is never needed. Install it with `pip install genro-storage[encryption]`.
+
 ### Async Usage
 
-All I/O methods use the `@smartasync` decorator for transparent sync/async support.
-The same `StorageManager` and `StorageNode` classes work in both contexts.
+All I/O methods are decorated with `@smartasync`, so the same `StorageManager`
+and `StorageNode` objects work in both contexts: in sync code the methods
+execute directly, in async code they return awaitables.
 
 ```python
 from genro_storage import StorageManager
@@ -271,19 +336,11 @@ async def backup_files(file_list):
 
 ## Learning with Interactive Tutorials
 
-The best way to learn genro-storage is through our **hands-on Jupyter notebooks** in the [`notebooks/`](notebooks/) directory.
-
-### Run Online (No Installation Required)
-
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/genropy/genro-storage/main?filepath=notebooks)
-
-Click the badge above to launch an interactive Jupyter environment in your browser. Ready in ~2 minutes!
-
-### Run Locally
+The best way to learn genro-storage is through our **hands-on Jupyter notebooks** in the [`notebooks/`](notebooks/) directory. They are executed by the test suite on every run, so what they show is what the current release does.
 
 ```bash
-# 1. Install Jupyter
-pip install jupyter notebook
+# 1. Install genro-storage and Jupyter
+pip install "genro-storage[all]" jupyter notebook
 
 # 2. Navigate to notebooks directory
 cd notebooks
@@ -315,19 +372,17 @@ See [notebooks/README.md](notebooks/README.md) for the complete learning guide.
 
 ## Installation
 
-### From GitHub (Recommended)
-
-Install directly from GitHub without cloning:
+### From PyPI
 
 ```bash
 # Base package
-pip install git+https://github.com/genropy/genro-storage.git
+pip install genro-storage
 
 # With S3 support
-pip install "genro-storage[s3] @ git+https://github.com/genropy/genro-storage.git"
+pip install "genro-storage[s3]"
 
-# With all backends
-pip install "genro-storage[all] @ git+https://github.com/genropy/genro-storage.git"
+# With all backends and encryption
+pip install "genro-storage[all]"
 ```
 
 ### From Source (Development)
@@ -358,25 +413,28 @@ Install optional dependencies for specific backends:
 
 ```bash
 # Cloud storage
-pip install genro-storage[s3]          # Amazon S3
-pip install genro-storage[gcs]         # Google Cloud Storage
-pip install genro-storage[azure]       # Azure Blob Storage
+pip install "genro-storage[s3]"          # Amazon S3
+pip install "genro-storage[gcs]"         # Google Cloud Storage
+pip install "genro-storage[azure]"       # Azure Blob Storage
 
 # Network protocols
-pip install genro-storage[http]        # HTTP/HTTPS
-pip install genro-storage[smb]         # SMB/CIFS (Windows/Samba shares)
-pip install genro-storage[sftp]        # SFTP (SSH File Transfer)
-pip install genro-storage[webdav]      # WebDAV (Nextcloud, ownCloud, SharePoint)
+pip install "genro-storage[http]"        # HTTP/HTTPS
+pip install "genro-storage[smb]"         # SMB/CIFS (Windows/Samba shares)
+pip install "genro-storage[sftp]"        # SFTP (SSH File Transfer)
+pip install "genro-storage[webdav]"      # WebDAV (Nextcloud, ownCloud, SharePoint)
 
 # Archive formats
-pip install genro-storage[libarchive]  # RAR, 7z, ISO, and 20+ formats
+pip install "genro-storage[libarchive]"  # RAR, 7z, ISO, and 20+ formats
 
 # Version control
-# Git and GitHub are built-in to fsspec (no extra install needed)
+pip install "genro-storage[git]"         # Local Git repositories (pygit2)
+pip install "genro-storage[github]"      # GitHub repositories (requests)
 
-# Other
-pip install genro-storage[encryption]  # At-rest encryption
-pip install genro-storage[all]         # All backends + encryption
+# Encryption at rest
+pip install "genro-storage[encryption]"  # cryptography
+
+# Everything
+pip install "genro-storage[all]"         # All backends + encryption
 ```
 
 **Built-in backends** (no extra dependencies):
@@ -385,25 +443,26 @@ pip install genro-storage[all]         # All backends + encryption
 - Base64 (inline data URIs)
 - ZIP archives
 - TAR archives (with gzip, bzip2, xz compression)
-- Git repositories (requires system `pygit2`)
-- GitHub repositories
 
 ## Testing
 
 ```bash
 # Unit tests (fast, no external dependencies)
-pytest tests/test_local_storage.py -v
+pytest -m "not integration"
 
-# Integration tests (requires Docker + MinIO)
+# Integration tests (requires Docker: MinIO, fake-gcs, Azurite, SFTP, Samba, WebDAV)
 docker compose -f tests/docker-compose.yml up -d
-pytest tests/test_s3_integration.py -v
+pytest -m integration
 
-# All tests
-pytest tests/ -v
+# All tests, with the services running
+pytest
 
-# With coverage
-pytest tests/ -v --cov=genro_storage
+# Or let Make start the services for you
+make test
 ```
+
+Without the Docker services the integration tests are deselected and coverage
+lands around 78%; with them the full suite reports 87%.
 
 See [TESTING.md](TESTING.md) for detailed testing instructions with MinIO.
 
@@ -416,12 +475,14 @@ with correctness checks, HTTP request counts and JSON/CSV/Markdown reports.
 
 - [fsspec](https://filesystem-spec.readthedocs.io/) - Pythonic filesystem abstraction
 - [genro-toolbox](https://github.com/genropy/genro-toolbox) - `@smartasync` for transparent sync/async
+- [genro-builders](https://github.com/genropy/genro-builders) - the grammar machinery behind `StorageConfig`
+- [genro-bag](https://github.com/genropy/genro-bag) - `BagResolver`, for configuration values that come from outside
 - Modern Python (3.11+) with full type hints
-- Optional backends: s3fs, gcsfs, adlfs, aiohttp, smbprotocol, paramiko, webdav4, libarchive-c
+- Optional backends: s3fs, gcsfs, adlfs, aiohttp, smbprotocol, paramiko, webdav4, libarchive-c, pygit2, cryptography
 
 ## Origins
 
-genro-storage is extracted and modernized from [Genropy](https://github.com/genropy/genropy), a Python web framework in production since 2006 (19+ years). The storage abstraction layer was introduced in 2018 and has been battle-tested in production for 6+ years. We're making this powerful storage abstraction available as a standalone library for the wider Python community.
+genro-storage is extracted and modernized from [Genropy](https://github.com/genropy/genropy), a Python web framework in production since 2006 (20 years). The storage abstraction layer was introduced in 2018 and has been battle-tested in production ever since. We're making this powerful storage abstraction available as a standalone library for the wider Python community.
 
 ## Development Status
 
@@ -430,63 +491,64 @@ genro-storage is extracted and modernized from [Genropy](https://github.com/genr
 - API Design Complete and Stable
 - Core Implementation Complete
 - FsspecBackend (15 storage backends: local, S3, GCS, Azure, HTTP, Memory, Base64, SMB, SFTP, ZIP, TAR, Git, GitHub, WebDAV, LibArchive)
-- Comprehensive Test Suite (411 tests, 85% coverage)
+- Comprehensive test suite (572 tests, 87% coverage with the Docker services running)
 - CI/CD with Python 3.11, 3.12, 3.13
+- Transparent async/await support via `@smartasync`
+- `StorageConfig` grammar for typed, pythonic configuration
+- Per-file encryption at rest with a self-describing envelope and encryption domains
 - MD5 hashing and content-based equality
 - Base64 backend with writable mutable paths
 - Intelligent copy skip strategies (exists, size, hash, custom)
-- call() method for external tool integration (ffmpeg, imagemagick, etc.)
-- serve() method for WSGI file serving (Flask, Django, Pyramid)
-- mimetype property for automatic content-type detection
-- local_path() context manager for external tools
+- `call()` method for external tool integration (ffmpeg, imagemagick, etc.)
+- `serve()` method for WSGI file serving (Flask, Django, Pyramid)
+- `mimetype` property for automatic content-type detection
+- `local_path()` context manager for external tools
 - Callable path support for dynamic directories
 - Native permission control (readonly, readwrite, delete)
 - Cloud metadata get/set (S3, GCS, Azure)
 - URL generation (presigned URLs, data URIs)
 - S3 versioning support
 - Full Documentation on ReadTheDocs
-- MinIO Integration Testing
-- Transparent async/await support via `@smartasync` decorator
+- Integration testing against MinIO, fake-gcs, Azurite, SFTP, Samba and WebDAV
 - Ready for early adopters and production testing
 - Extended GCS/Azure integration testing in progress
 
 **Recent Releases:**
-- v0.8.0 (July 2026) - Per-node encryption with a self-describing envelope and encoding domains; `default_encrypted` replaces the mount-level `encrypted`
-- v0.7.0 (July 2026) - Unified sync/async via `@smartasync`, removed AsyncStorageManager; at-rest encryption, StorageConfig grammar, Python 3.11 floor
+- v0.8.0 (July 2026) - Per-node encryption with a self-describing envelope and encryption domains; `default_encrypted` replaces the mount-level `encrypted`
+- v0.7.2 (July 2026) - The configuration module is now `storage_grammar`
+- v0.7.1 (July 2026) - `StorageConfig` exported from the package root
+- v0.7.0 (July 2026) - genro-builders 0.22 alignment, `StorageConfig` grammar with in-place resolvers, at-rest encryption, Python 3.11 floor
 - v0.4.2 (October 2025) - Git, GitHub, WebDAV, LibArchive backends
 - v0.4.1 (October 2025) - SMB, SFTP, ZIP, TAR backends
 - v0.4.0 (October 2025) - Relative mounts with permissions, unified read/write API
 - v0.2.0 (October 2025) - Virtual nodes, tutorials, enhanced testing
 
+See [docs/changelog.rst](docs/changelog.rst) for the complete history.
+
 ## Contributing
 
-Contributions are welcome! We follow a **Git Flow** workflow with protected branches for code quality.
+Contributions are welcome!
 
 **Quick Start:**
 1. Read our [Contributing Guide](CONTRIBUTING.md) for detailed workflow and guidelines
-2. Fork the repository and create a feature branch from `develop`
+2. Fork the repository and create a branch
 3. Make your changes with tests and documentation
-4. Submit a Pull Request to the `develop` branch
+4. Open a Pull Request against `main`
 
-**Branch Structure:**
-- `main` - Production releases (protected, requires PR review)
-- `develop` - Integration branch (protected, requires PR review)
-- `feature/*` - Feature development branches
-- `bugfix/*` - Bug fixes
-- `hotfix/*` - Critical production fixes
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for complete workflow documentation.
+`main` is the single long-lived branch: it carries the releases, is protected,
+and requires a reviewed PR. Work happens on short-lived topic branches that are
+deleted once merged.
 
 **Areas for contribution:**
 - Add integration tests for GCS and Azure backends
-- Improve test coverage (target: 90%+)
+- Widen the async coverage in `tests/test_async.py` to the cloud backends
 - Add integration tests for new backends (SMB, SFTP, WebDAV, etc.)
 - Performance optimizations
 - Additional backend implementations
 
 ## License
 
-MIT License - See [LICENSE](LICENSE) for details
+Apache License 2.0 - See [LICENSE](LICENSE) for details
 
 ---
 
