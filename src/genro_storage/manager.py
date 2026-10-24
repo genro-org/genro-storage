@@ -721,6 +721,8 @@ class StorageManager:
                 kwargs["secret"] = config["secret"]
             if "endpoint_url" in config:
                 kwargs["endpoint_url"] = config["endpoint_url"]
+            if "version_aware" in config:
+                kwargs["version_aware"] = config["version_aware"]
 
             backend = FsspecBackend("s3", base_path=path, **kwargs)
 

@@ -267,6 +267,9 @@ Access files in Amazon S3 buckets.
 - ``key``: AWS access key (default: from AWS config)
 - ``secret``: AWS secret key (default: from AWS config)
 - ``endpoint_url``: Custom S3 endpoint for S3-compatible services
+- ``version_aware``: List object versions (default: ``True``). Set ``False``
+  for S3-compatible servers without ``ListObjectVersions``, such as Garage;
+  delete, list, copy and move then work, and versioning capabilities are off
 
 **Example:**
 

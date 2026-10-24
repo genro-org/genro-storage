@@ -79,6 +79,14 @@ def test_only_provided_fields_are_captured_as_attributes():
     assert attrs == {"name": "uploads", "bucket": "b"}
 
 
+def test_version_aware_captured_on_an_s3_mount():
+    """``version_aware=False`` survives as a node attribute of the s3 mount."""
+    mounts = _mounts(
+        _build(lambda root: root.mounts().s3(name="uploads", bucket="b", version_aware=False))
+    )
+    assert mounts.get_node("uploads").attr.get("version_aware") is False
+
+
 @pytest.mark.parametrize("value", [True, "acmespa"])
 def test_default_encrypted_captured_on_a_local_mount(value):
     """``default_encrypted`` accepts both shapes of the write parameter it defaults."""

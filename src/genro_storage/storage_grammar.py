@@ -148,10 +148,15 @@ class StorageGrammar:
         access_key: str | BagResolver | None = None,
         secret_key: str | BagResolver | None = None,
         endpoint_url: str | BagResolver | None = None,
+        version_aware: bool | None = None,
         default_encrypted: bool | str = False,
         permissions: Permissions | None = None,
     ):
-        """S3 or S3-compatible bucket; MinIO and friends via ``endpoint_url``."""
+        """S3 or S3-compatible bucket; MinIO and friends via ``endpoint_url``.
+
+        ``version_aware=False`` disables object-version listing, for servers
+        without ``ListObjectVersions``; the default keeps it on.
+        """
 
     @element()
     def gcs(

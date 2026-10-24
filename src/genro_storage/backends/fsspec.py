@@ -442,8 +442,8 @@ class FsspecBackend(StorageBackend):
             bool: True if versioning is available
         """
         try:
-            # Check if s3fs supports versioning methods
-            return hasattr(self.fs, "object_version_info")
+            # Check if s3fs supports versioning methods and the mount enables them
+            return hasattr(self.fs, "object_version_info") and self.fs.version_aware
         except Exception:
             return False
 

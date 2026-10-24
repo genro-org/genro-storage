@@ -163,6 +163,57 @@ class TestS3Storage:
         assert node.read() == "prefixed content"
 
 
+class TestS3VersionAware:
+    """The ``version_aware`` mount option (issue #84)."""
+
+    def make_storage(self, minio_bucket, minio_config, **options):
+        storage = StorageManager()
+        storage.configure(
+            [
+                {
+                    "name": "s3",
+                    "protocol": "s3",
+                    "bucket": minio_bucket,
+                    "endpoint_url": minio_config["endpoint_url"],
+                    "key": minio_config["aws_access_key_id"],
+                    "secret": minio_config["aws_secret_access_key"],
+                    **options,
+                }
+            ]
+        )
+        return storage
+
+    def test_default_reports_versioning(self, minio_bucket, minio_config):
+        storage = self.make_storage(minio_bucket, minio_config)
+        assert storage.node("s3:a.txt").capabilities.versioning is True
+
+    def test_disabled_reports_no_versioning(self, minio_bucket, minio_config):
+        storage = self.make_storage(minio_bucket, minio_config, version_aware=False)
+        capabilities = storage.node("s3:a.txt").capabilities
+        assert capabilities.versioning is False
+        assert capabilities.version_listing is False
+        assert capabilities.version_access is False
+
+    def test_disabled_supports_file_operations(self, minio_bucket, minio_config):
+        storage = self.make_storage(minio_bucket, minio_config, version_aware=False)
+        storage.node("s3:dir/one.txt").write("one")
+        storage.node("s3:dir/two.txt").write("two")
+        assert sorted(c.basename for c in storage.node("s3:dir").children()) == [
+            "one.txt",
+            "two.txt",
+        ]
+
+        storage.node("s3:dir/one.txt").copy_to(storage.node("s3:copied.txt"))
+        assert storage.node("s3:copied.txt").read() == "one"
+
+        storage.node("s3:dir/two.txt").move_to(storage.node("s3:moved.txt"))
+        assert not storage.node("s3:dir/two.txt").exists()
+        assert storage.node("s3:moved.txt").read() == "two"
+
+        storage.node("s3:moved.txt").delete()
+        assert not storage.node("s3:moved.txt").exists()
+
+
 class TestS3ToLocalCopy:
     """Test copying between S3 and local storage."""
 

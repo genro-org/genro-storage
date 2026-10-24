@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Add the `version_aware` option to `s3` mounts (#84). It defaults to `True`,
+  as before. With `False`, delete, list, copy and move work on S3-compatible
+  servers without `ListObjectVersions`, such as Garage, and the versioning
+  capabilities report `False`.
+
 ## 0.8.3 — 2026-10-24
 
 First published release with the 0.8.2 changes below.
