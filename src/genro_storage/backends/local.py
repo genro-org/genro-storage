@@ -17,17 +17,74 @@
 
 This module implements the local filesystem storage backend using
 Python's standard pathlib and file operations.
+
+Writes that replace a file (``write_bytes``, ``write_text``, ``open`` in a
+``w`` mode) are atomic for readers: data goes to a uniquely named temporary
+file in the destination directory, is fsync'ed, then ``os.replace`` moves it
+onto the destination. A reader sees the complete old or the complete new
+content. An existing destination keeps its permission bits; a new one gets
+the umask default. If the ``with`` block of ``open`` raises, the temporary
+file is removed and the destination is untouched. Modes ``a``, ``x`` and
+``r+`` write in place, as before.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import BinaryIO, TextIO, Callable, Union
+import os
 import shutil
+import stat
 import sys
+import uuid
 
 from .base import StorageBackend
 from ..capabilities import capability
+
+
+class AtomicWriteFile:
+    """File object that writes to a temporary file and replaces the destination on close.
+
+    Attribute access is delegated to the underlying temporary file object.
+    """
+
+    def __init__(self, temp_file, temp_path: Path, destination: Path):
+        self._temp_file = temp_file
+        self._temp_path = temp_path
+        self._destination = destination
+
+    def __getattr__(self, name: str):
+        return getattr(self._temp_file, name)
+
+    def __iter__(self):
+        return iter(self._temp_file)
+
+    def __enter__(self) -> AtomicWriteFile:
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if exc_type is None:
+            self.close()
+        else:
+            self.discard()
+
+    def close(self) -> None:
+        """Flush, fsync and close the temporary file, then move it onto the destination."""
+        if self._temp_file.closed:
+            return
+        try:
+            self._temp_file.flush()
+            os.fsync(self._temp_file.fileno())
+            self._temp_file.close()
+            os.replace(self._temp_path, self._destination)
+        except BaseException:
+            self.discard()
+            raise
+
+    def discard(self) -> None:
+        """Close and remove the temporary file, leaving the destination untouched."""
+        self._temp_file.close()
+        self._temp_path.unlink(missing_ok=True)
 
 
 class LocalStorage(StorageBackend):
@@ -275,11 +332,25 @@ class LocalStorage(StorageBackend):
         """Open file and return file-like object."""
         full_path = self._resolve_path(path)
 
+        if "w" in mode:
+            return self._open_atomic_write(full_path, mode)
+
         # Ensure parent directory exists for write modes
-        if any(m in mode for m in ["w", "a", "x"]):
+        if any(m in mode for m in ["a", "x"]):
             full_path.parent.mkdir(parents=True, exist_ok=True)
 
         return open(full_path, mode)
+
+    def _open_atomic_write(
+        self, full_path: Path, mode: str, encoding: str | None = None
+    ) -> AtomicWriteFile:
+        """Open a temporary file beside full_path that replaces it on close."""
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = full_path.with_name(f".{full_path.name}.{uuid.uuid4().hex}.tmp")
+        temp_file = open(temp_path, mode.replace("w", "x"), encoding=encoding)
+        if full_path.exists():
+            os.chmod(temp_path, stat.S_IMODE(full_path.stat().st_mode))
+        return AtomicWriteFile(temp_file, temp_path, full_path)
 
     @capability("read")
     def read_bytes(self, path: str) -> bytes:
@@ -303,23 +374,15 @@ class LocalStorage(StorageBackend):
 
     @capability("write", "atomic_operations")
     def write_bytes(self, path: str, data: bytes) -> None:
-        """Write bytes to file."""
-        full_path = self._resolve_path(path)
-
-        # Ensure parent directory exists
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-
-        full_path.write_bytes(data)
+        """Write bytes to file, replacing it atomically."""
+        with self._open_atomic_write(self._resolve_path(path), "wb") as f:
+            f.write(data)
 
     @capability("write", "atomic_operations")
     def write_text(self, path: str, text: str, encoding: str = "utf-8") -> None:
-        """Write text to file."""
-        full_path = self._resolve_path(path)
-
-        # Ensure parent directory exists
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-
-        full_path.write_text(text, encoding=encoding)
+        """Write text to file, replacing it atomically."""
+        with self._open_atomic_write(self._resolve_path(path), "w", encoding=encoding) as f:
+            f.write(text)
 
     @capability("delete")
     def delete(self, path: str, recursive: bool = False) -> None:
