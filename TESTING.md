@@ -40,7 +40,7 @@ tests/
 ├── conftest.py                     # Shared fixtures and helpers
 ├── test_local_storage.py           # Unit tests (no Docker)
 ├── test_memory_storage.py          # Unit tests (no Docker)
-├── test_s3_integration.py          # Integration tests (requires MinIO)
+├── test_s3_integration.py          # Integration tests (requires RustFS)
 ├── test_additional_backends.py     # Integration tests (GCS, WebDAV, Azure)
 ├── test_new_backends.py            # Integration tests (SMB, SFTP)
 └── ...
@@ -96,7 +96,7 @@ The following Docker services are required for integration tests:
 
 | Service | Port | Purpose | Container Name |
 |---------|------|---------|----------------|
-| **MinIO** | 9000, 9001 | S3-compatible storage | genro-storage-minio |
+| **RustFS** | 9000, 9001 | S3-compatible storage | genro-storage-rustfs |
 | **fake-gcs-server** | 4443 | Google Cloud Storage emulator | genro-storage-fake-gcs |
 | **WebDAV** | 8080 | WebDAV server | genro-storage-webdav |
 | **Azurite** | 10000-10002 | Azure Storage emulator | genro-storage-azurite |
@@ -105,7 +105,7 @@ The following Docker services are required for integration tests:
 
 ### Service Credentials
 
-- **MinIO**: minioadmin / minioadmin
+- **RustFS**: minioadmin / minioadmin
 - **SFTP**: testuser / testpass
 - **Samba**: testuser / testpass
 - **WebDAV**: testuser / testpass
@@ -156,7 +156,7 @@ pytest tests/ -v -m integration --cov=genro_storage --cov-append
 docker ps
 
 # View service logs
-docker compose -f tests/docker-compose.yml logs minio
+docker compose -f tests/docker-compose.yml logs rustfs
 docker compose -f tests/docker-compose.yml logs fake-gcs
 docker compose -f tests/docker-compose.yml logs webdav
 
@@ -182,7 +182,7 @@ If tests are being skipped when services are running:
 
 ```bash
 # Check services are actually accessible
-curl http://localhost:9000/minio/health/live  # MinIO
+curl http://localhost:9000/health             # RustFS
 curl http://localhost:4443/storage/v1/b       # fake-gcs
 curl http://localhost:8080                    # WebDAV
 nc -zv localhost 10000                        # Azurite
@@ -225,10 +225,10 @@ open htmlcov/index.html
 You can customize test behavior with environment variables:
 
 ```bash
-# Use different MinIO endpoint
+# Use a different S3 endpoint (variable names predate the move to RustFS)
 export MINIO_ENDPOINT=http://localhost:9000
 
-# Custom MinIO credentials
+# Custom S3 credentials
 export MINIO_ACCESS_KEY=your_key
 export MINIO_SECRET_KEY=your_secret
 
@@ -268,7 +268,7 @@ ptw tests/ -- -v
 
 Access services directly for debugging:
 
-- **MinIO Console**: http://localhost:9001
+- **RustFS Console**: http://localhost:9001
 - **fake-gcs API**: http://localhost:4443/storage/v1/b
 - **WebDAV**: http://localhost:8080 (testuser/testpass)
 

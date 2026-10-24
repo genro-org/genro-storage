@@ -102,9 +102,9 @@ jobs:
         # Wait for critical services to be ready
         echo "Waiting for services to be ready..."
 
-        # MinIO (required for S3 tests)
-        timeout 90 bash -c 'until curl -f http://localhost:9000/minio/health/live 2>/dev/null; do echo "Waiting for MinIO..."; sleep 2; done'
-        echo "✓ MinIO ready"
+        # RustFS (required for S3 tests)
+        timeout 90 bash -c 'until curl -f http://localhost:9000/health 2>/dev/null; do echo "Waiting for RustFS..."; sleep 2; done'
+        echo "✓ RustFS ready"
 
         # Azurite (optional - Azure tests)
         timeout 30 bash -c 'until nc -z localhost 10000 2>/dev/null; do echo "Waiting for Azurite..."; sleep 2; done' || echo "⚠ Azurite not ready (tests will skip)"
