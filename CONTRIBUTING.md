@@ -153,6 +153,17 @@ For critical production issues:
    pip install -e ".[dev,all]"
    ```
 
+   Keep Genro modules on their latest stable releases. When reusing an existing
+   environment, explicitly upgrade them (a normal install can keep older versions
+   that still satisfy the minimum requirements):
+
+   ```bash
+   python -m pip install --upgrade genro-bag genro-builders genro-toolbox genro-tytx
+   ```
+
+   When updating dependencies, raise the Genro minimum versions in
+   `pyproject.toml` to the latest verified releases.
+
 4. **Run tests**:
    ```bash
    pytest tests/ -v
