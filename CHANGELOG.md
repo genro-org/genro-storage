@@ -1,6 +1,15 @@
 # Changelog
 
-## 0.8.2 — 2026-10-24
+## 0.8.3 — 2026-10-24
+
+First published release with the 0.8.2 changes below.
+
+- Rename the publishing workflow to `publish.yml`, matching the PyPI trusted
+  publisher and the other Genro repositories.
+- Run the S3 integration tests against RustFS instead of MinIO, whose images
+  were removed from Docker Hub.
+
+## 0.8.2 — 2026-10-24 (tagged, not published to PyPI)
 
 - Replace files atomically on the `local` backend (#83). `write_bytes`,
   `write_text` and `open()` in a `w` mode write to a temporary file in the
