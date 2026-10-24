@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.4 — 2026-10-24
 
 - Add the `version_aware` option to `s3` mounts (#84). It defaults to `True`,
   as before. With `False`, delete, list, copy and move work on S3-compatible
