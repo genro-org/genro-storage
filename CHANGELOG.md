@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.2 — 2026-10-24
+
+- Replace files atomically on the `local` backend (#83). `write_bytes`,
+  `write_text` and `open()` in a `w` mode write to a temporary file in the
+  destination directory, fsync it and move it onto the destination with
+  `os.replace`. Concurrent readers see the complete old or the complete new
+  content. An existing destination keeps its permission bits; an error inside
+  the `open()` block leaves the destination untouched. Modes `a`, `x` and `r+`
+  still write in place.
+- Require genro-bag and genro-builders >=0.27.0 and genro-toolbox >=0.14.0.
+  Document keeping Genro modules on the latest stable releases in development.
+
 ## 0.8.1 — 2026-09-08
 
 - Fetch StorageNode attributes through one backend metadata snapshot. On S3,
