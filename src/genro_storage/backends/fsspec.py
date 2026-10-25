@@ -18,16 +18,59 @@
 This module provides a generic backend that wraps fsspec filesystems,
 allowing access to local, S3, GCS, Azure, HTTP, and other storage systems
 through a unified interface.
+
+``open`` in an ``x`` mode raises ``FileExistsError`` when the file exists, on
+every fsspec filesystem. s3fs checks the exclusive create only when the file
+is committed, on close, and raises ``FileExistsError`` only if the server's
+412 answer names the ``If-None-Match`` condition. Servers that omit it
+(RustFS 1.0.3) make s3fs raise a plain ``OSError``; ``ExclusiveCreateFile``
+turns that 412 into ``FileExistsError``.
 """
 
 from __future__ import annotations
 
 from typing import BinaryIO, TextIO
 from pathlib import PurePosixPath
+import errno
 import fsspec
 
 from .base import StorageBackend
 from ..capabilities import BackendCapabilities
+
+
+class ExclusiveCreateFile:
+    """File object for an ``x`` mode open that reports a failed exclusive create as FileExistsError.
+
+    Attribute access is delegated to the underlying fsspec file object.
+    """
+
+    def __init__(self, file, path: str):
+        self._file = file
+        self._path = path
+
+    def __getattr__(self, name: str):
+        return getattr(self._file, name)
+
+    def __iter__(self):
+        return iter(self._file)
+
+    def __enter__(self) -> ExclusiveCreateFile:
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+    def close(self) -> None:
+        """Close the file; a 412 PreconditionFailed from the commit becomes FileExistsError."""
+        try:
+            self._file.close()
+        except FileExistsError:
+            raise
+        except OSError as exc:
+            response = getattr(exc.__cause__, "response", None) or {}
+            if response.get("Error", {}).get("Code") != "PreconditionFailed":
+                raise
+            raise FileExistsError(errno.EEXIST, "File already exists", self._path) from exc
 
 
 class FsspecBackend(StorageBackend):
@@ -523,7 +566,10 @@ class FsspecBackend(StorageBackend):
     def open(self, path: str, mode: str = "rb") -> BinaryIO | TextIO:
         """Open file and return file-like object."""
         full_path = self._full_path(path)
-        return self.fs.open(full_path, mode)
+        file = self.fs.open(full_path, mode)
+        if "x" in mode:
+            return ExclusiveCreateFile(file, path)
+        return file
 
     def read_bytes(self, path: str) -> bytes:
         """Read entire file as bytes."""

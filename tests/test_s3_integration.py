@@ -43,6 +43,26 @@ class TestS3Storage:
         read_data = node.read(mode="rb")
         assert read_data == data
 
+    def test_open_exclusive_create_on_existing_file(self, storage_with_s3):
+        """open('xb') on an existing object raises FileExistsError and keeps the content."""
+        node = storage_with_s3.node("test-s3:exclusive.bin")
+        node.write_bytes(b"original")
+
+        with pytest.raises(FileExistsError):
+            with node.open("xb") as f:
+                f.write(b"replacement")
+
+        assert node.read_bytes() == b"original"
+
+    def test_open_exclusive_create_on_new_file(self, storage_with_s3):
+        """open('xb') on a missing object creates it."""
+        node = storage_with_s3.node("test-s3:exclusive_new.bin")
+
+        with node.open("xb") as f:
+            f.write(b"created")
+
+        assert node.read_bytes() == b"created"
+
     def test_file_exists(self, storage_with_s3):
         """Test checking if file exists on S3."""
         node = storage_with_s3.node("test-s3:test.txt")

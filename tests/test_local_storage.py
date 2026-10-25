@@ -193,6 +193,17 @@ class TestFileOperations:
 
         assert content == "Line 1\nLine 2\n"
 
+    def test_open_exclusive_create_on_existing_file(self, storage):
+        """open('xb') on an existing file raises FileExistsError and keeps the content."""
+        node = storage.node("test:file.bin")
+        node.write_bytes(b"original")
+
+        with pytest.raises(FileExistsError):
+            with node.open("xb") as f:
+                f.write(b"replacement")
+
+        assert node.read_bytes() == b"original"
+
     def test_file_delete(self, storage):
         """Test deleting a file."""
         node = storage.node("test:file.txt")
