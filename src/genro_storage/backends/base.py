@@ -306,13 +306,15 @@ class StorageBackend(ABC):
 
         Args:
             path: Relative path to file
-            mode: File mode ('r', 'rb', 'w', 'wb', 'a', 'ab')
+            mode: File mode ('r', 'rb', 'w', 'wb', 'a', 'ab', 'x', 'xb')
 
         Returns:
             BinaryIO | TextIO: File-like object supporting context manager
 
         Raises:
             FileNotFoundError: If file doesn't exist (in read mode)
+            FileExistsError: If file exists (in 'x' mode); object stores
+                may raise it on close, when the write is committed
             PermissionError: If insufficient permissions
 
         Examples:
