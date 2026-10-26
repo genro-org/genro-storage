@@ -102,6 +102,55 @@ class TestS3Storage:
 
         assert isinstance(excinfo.value, OSError)
 
+    @pytest.mark.parametrize(
+        "consume",
+        [
+            lambda f: f.readline(),
+            lambda f: f.readlines(),
+            lambda f: f.readinto(bytearray(8)),
+            lambda f: next(iter(f)),
+        ],
+        ids=["readline", "readlines", "readinto", "iteration"],
+    )
+    def test_open_rb_line_reads_on_replaced_object_raise_read_conflict(
+        self, storage_with_s3, consume
+    ):
+        """Every read method of a file opened with 'rb' raises StorageReadConflictError after a replacement."""
+        node = storage_with_s3.node("test-s3:streamed_lines.bin")
+        node.write_bytes(b"one\ntwo\n")
+
+        with node.open("rb") as f:
+            node.write_bytes(b"three\nfour\n")
+            with pytest.raises(StorageReadConflictError):
+                consume(f)
+
+    def test_open_rb_reads_lines_of_an_unchanged_object(self, storage_with_s3):
+        """A file opened with 'rb' iterates lines, fills buffers and exposes the file attributes."""
+        node = storage_with_s3.node("test-s3:lines.bin")
+        node.write_bytes(b"one\ntwo\n")
+
+        with node.open("rb") as f:
+            assert f.closed is False
+            assert list(f) == [b"one\n", b"two\n"]
+        with node.open("rb") as f:
+            assert f.readlines() == [b"one\n", b"two\n"]
+        with node.open("rb") as f:
+            buffer = bytearray(3)
+            assert f.readinto(buffer) == 3
+            assert bytes(buffer) == b"one"
+
+    def test_open_rb_on_deleted_object_raises_file_not_found(self, storage_with_s3):
+        """A file opened with 'rb' whose object is deleted raises FileNotFoundError, not a read conflict."""
+        node = storage_with_s3.node("test-s3:deleted.bin")
+        node.write_bytes(b"original")
+
+        with node.open("rb") as f:
+            node.delete()
+            with pytest.raises(FileNotFoundError) as excinfo:
+                f.read()
+
+        assert not isinstance(excinfo.value, StorageReadConflictError)
+
     def test_file_exists(self, storage_with_s3):
         """Test checking if file exists on S3."""
         node = storage_with_s3.node("test-s3:test.txt")
