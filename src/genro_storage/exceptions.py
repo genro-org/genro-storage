@@ -79,6 +79,25 @@ class StoragePermissionError(StorageError, PermissionError):
     pass
 
 
+class StorageReadConflictError(StorageError, OSError):
+    """Raised when an object is replaced while it is being read.
+
+    A new read returns the new version. ``read_bytes``, ``read_text`` and
+    ``local_path`` restart on their own and raise this only when the object
+    keeps changing; a file opened with ``open('rb')`` raises it on the read
+    that follows the replacement. It inherits from OSError, so code that
+    catches OSError keeps working.
+
+    Examples:
+        >>> try:
+        ...     data = node.read_bytes()
+        ... except StorageReadConflictError:
+        ...     print("Object kept changing during the read")
+    """
+
+    pass
+
+
 class StorageConfigError(StorageError, ValueError):
     """Raised when configuration is invalid.
 

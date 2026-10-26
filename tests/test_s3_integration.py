@@ -6,8 +6,10 @@ These tests require MinIO to be running. Start it with:
 Or skip these tests if MinIO is not available.
 """
 
+import threading
+
 import pytest
-from genro_storage import StorageManager
+from genro_storage import StorageManager, StorageReadConflictError
 
 
 pytestmark = pytest.mark.integration
@@ -62,6 +64,43 @@ class TestS3Storage:
             f.write(b"created")
 
         assert node.read_bytes() == b"created"
+
+    def test_read_bytes_during_replacement_returns_a_complete_version(self, storage_with_s3):
+        """read_bytes() while another writer replaces the object returns one complete version."""
+        node = storage_with_s3.node("test-s3:replaced.bin")
+        versions = [bytes([i]) * 4_000_000 for i in range(2)]
+        node.write_bytes(versions[0])
+        stop, errors, wrong = threading.Event(), [], []
+
+        def reader():
+            while not stop.is_set():
+                try:
+                    if node.read_bytes() not in versions:
+                        wrong.append(True)
+                except OSError as exc:
+                    errors.append(exc)
+
+        thread = threading.Thread(target=reader)
+        thread.start()
+        for i in range(100):
+            node.write_bytes(versions[i % 2])
+        stop.set()
+        thread.join()
+
+        assert errors == []
+        assert wrong == []
+
+    def test_open_rb_on_replaced_object_raises_read_conflict(self, storage_with_s3):
+        """Reading a file opened with 'rb' after the object is replaced raises StorageReadConflictError."""
+        node = storage_with_s3.node("test-s3:streamed.bin")
+        node.write_bytes(b"original")
+
+        with node.open("rb") as f:
+            node.write_bytes(b"replacement")
+            with pytest.raises(StorageReadConflictError) as excinfo:
+                f.read()
+
+        assert isinstance(excinfo.value, OSError)
 
     def test_file_exists(self, storage_with_s3):
         """Test checking if file exists on S3."""

@@ -69,6 +69,7 @@ from .exceptions import (
     StorageError,
     StorageNotFoundError,
     StoragePermissionError,
+    StorageReadConflictError,
     StorageConfigError,
 )
 from .storage_grammar import StorageConfig
@@ -86,5 +87,6 @@ __all__ = [
     "StorageError",
     "StorageNotFoundError",
     "StoragePermissionError",
+    "StorageReadConflictError",
     "StorageConfigError",
 ]
