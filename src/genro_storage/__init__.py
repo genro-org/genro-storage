@@ -61,7 +61,7 @@ For more information, see the documentation at:
 https://genro-storage.readthedocs.io
 """
 
-__version__ = "0.8.4"
+__version__ = "0.8.5"
 
 from .manager import StorageManager
 from .node import StorageNode, SkipStrategy

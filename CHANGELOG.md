@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.5 — 2026-10-27
+
+- `open("x")` and `open("xb")` on an existing `s3` object raise
+  `FileExistsError`, as on a local mount, instead of a generic `OSError` (#85).
+  The error is raised when the file is closed.
+- Reads of an `s3` object replaced while it is being read no longer fail with
+  a precondition `OSError` (#86). `read_bytes`, `read_text` and `local_path`
+  restart the read on the new version, up to three attempts. When the attempts
+  run out, and for a file opened with `open("rb")`, the new
+  `StorageReadConflictError` is raised; it is a subclass of `StorageError` and
+  `OSError`.
+
 ## 0.8.4 — 2026-10-24
 
 - Add the `version_aware` option to `s3` mounts (#84). It defaults to `True`,
