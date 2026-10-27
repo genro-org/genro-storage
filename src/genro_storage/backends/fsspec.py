@@ -25,10 +25,21 @@ is committed, on close, and raises ``FileExistsError`` only if the server's
 412 answer names the ``If-None-Match`` condition. Servers that omit it
 (RustFS 1.0.3) make s3fs raise a plain ``OSError``; ``ExclusiveCreateFile``
 turns that 412 into ``FileExistsError``.
+
+s3fs pins every binary read to the ETag found when the file is opened; if the
+object is replaced before a range is fetched, the server answers 412. s3fs
+raises ``FileExpired`` only when the message reads "pre-conditions", so
+RustFS 1.0.3 ("preconditions") gets a plain ``OSError``. ``read_bytes``,
+``read_text`` and ``local_path`` restart the read up to ``READ_ATTEMPTS``
+times, so the caller receives one complete version; the last 412 raises
+``StorageReadConflictError``. A file from ``open('rb')`` cannot restart data
+already handed out: ``ReadConflictFile`` raises ``StorageReadConflictError``
+on the read that meets the 412.
 """
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import BinaryIO, TextIO
 from pathlib import PurePosixPath
 import errno
@@ -36,6 +47,9 @@ import fsspec
 
 from .base import StorageBackend
 from ..capabilities import BackendCapabilities
+from ..exceptions import StorageReadConflictError
+
+READ_ATTEMPTS = 3
 
 
 class ExclusiveCreateFile:
@@ -71,6 +85,52 @@ class ExclusiveCreateFile:
             if response.get("Error", {}).get("Code") != "PreconditionFailed":
                 raise
             raise FileExistsError(errno.EEXIST, "File already exists", self._path) from exc
+
+
+class ReadConflictFile:
+    """File object for an ``rb`` open that reports a replaced object as StorageReadConflictError.
+
+    Attribute access is delegated to the underlying fsspec file object.
+    """
+
+    def __init__(self, file, path: str, backend: FsspecBackend):
+        self._file = file
+        self._path = path
+        self.backend = backend
+
+    def __getattr__(self, name: str):
+        return getattr(self._file, name)
+
+    def __enter__(self) -> ReadConflictFile:
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self._file.close()
+
+    def __iter__(self) -> ReadConflictFile:
+        return self
+
+    def __next__(self) -> bytes:
+        line = self.readline()
+        if not line:
+            raise StopIteration
+        return line
+
+    def read(self, *args) -> bytes:
+        with self.backend.read_conflict_as_storage_error(self._path):
+            return self._file.read(*args)
+
+    def readinto(self, buffer) -> int:
+        with self.backend.read_conflict_as_storage_error(self._path):
+            return self._file.readinto(buffer)
+
+    def readline(self, *args) -> bytes:
+        with self.backend.read_conflict_as_storage_error(self._path):
+            return self._file.readline(*args)
+
+    def readlines(self, *args) -> list[bytes]:
+        with self.backend.read_conflict_as_storage_error(self._path):
+            return self._file.readlines(*args)
 
 
 class FsspecBackend(StorageBackend):
@@ -569,21 +629,55 @@ class FsspecBackend(StorageBackend):
         file = self.fs.open(full_path, mode)
         if "x" in mode:
             return ExclusiveCreateFile(file, path)
+        if "r" in mode and "b" in mode:
+            return ReadConflictFile(file, path, self)
         return file
 
     def read_bytes(self, path: str) -> bytes:
         """Read entire file as bytes."""
-        full_path = self._full_path(path)
-
-        with self.fs.open(full_path, "rb") as f:
-            return f.read()
+        return self._read_with_restart(path, "rb", lambda f: f.read())
 
     def read_text(self, path: str, encoding: str = "utf-8") -> str:
         """Read entire file as text."""
-        full_path = self._full_path(path)
+        return self._read_with_restart(path, "r", lambda f: f.read(), encoding=encoding)
 
-        with self.fs.open(full_path, "r", encoding=encoding) as f:
-            return f.read()
+    def _read_with_restart(self, path: str, mode: str, consume, **open_kwargs):
+        """Open path and return consume(file), restarting when the object is replaced.
+
+        The first READ_ATTEMPTS - 1 replacements restart the read from the new
+        version; the last one raises StorageReadConflictError.
+        """
+        full_path = self._full_path(path)
+        for _ in range(READ_ATTEMPTS - 1):
+            try:
+                with self.fs.open(full_path, mode, **open_kwargs) as f:
+                    return consume(f)
+            except OSError as exc:
+                if not self._is_precondition_failed(exc):
+                    raise
+        with self.read_conflict_as_storage_error(path):
+            with self.fs.open(full_path, mode, **open_kwargs) as f:
+                return consume(f)
+
+    @contextmanager
+    def read_conflict_as_storage_error(self, path: str):
+        """Raise StorageReadConflictError for a 412 PreconditionFailed met inside the block."""
+        try:
+            yield
+        except OSError as exc:
+            if not self._is_precondition_failed(exc):
+                raise
+            raise StorageReadConflictError(f"Object replaced during the read: {path}") from exc
+
+    def _is_precondition_failed(self, exc: OSError) -> bool:
+        """True when exc comes from a 412 PreconditionFailed answer of the server."""
+        cause = exc.__cause__
+        while cause is not None:
+            response = getattr(cause, "response", None)
+            if response is not None:
+                return response.get("Error", {}).get("Code") == "PreconditionFailed"
+            cause = cause.__cause__
+        return False
 
     def write_bytes(self, path: str, data: bytes) -> None:
         """Write bytes to file."""
@@ -1092,8 +1186,8 @@ class FsspecBackend(StorageBackend):
                 # Download file if reading
                 if mode in ("r", "rw"):
                     if self.fs.exists(full_path):
-                        # Download from remote to temp
-                        with self.fs.open(full_path, "rb") as remote_file:
+                        # Download from remote to temp; a restart rewrites the temp file
+                        def download(remote_file):
                             with open(tmp_path, "wb") as local_file:
                                 # Stream in chunks to handle large files
                                 chunk_size = 8 * 1024 * 1024  # 8MB chunks
@@ -1102,6 +1196,8 @@ class FsspecBackend(StorageBackend):
                                     if not chunk:
                                         break
                                     local_file.write(chunk)
+
+                        self._read_with_restart(path, "rb", download)
                     elif mode == "rw":
                         # File doesn't exist but mode is rw - create empty
                         pass
