@@ -1752,6 +1752,9 @@ class StorageNode:
         Returns:
             StorageNode: Child node with combined path
 
+        Raises:
+            ValueError: If the combined path contains "..", as in StorageManager.node()
+
         Examples:
             >>> docs = storage.node('home:documents')
             >>>
@@ -1766,7 +1769,7 @@ class StorageNode:
         # Join all parts into a single path
         child_path = "/".join(parts)
         # Combine with current path
-        full_child_path = str(self._posix_path / child_path)
+        full_child_path = self._manager._normalize_path(str(self._posix_path / child_path))
         return self._create_node(self._manager, self._mount_name, full_child_path)
 
     @smartasync
