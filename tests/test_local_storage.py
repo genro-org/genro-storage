@@ -684,6 +684,18 @@ class TestPathNormalization:
         with pytest.raises(ValueError, match="Parent directory traversal"):
             storage.node("test:documents/../etc/passwd")
 
+    @pytest.mark.parametrize("protocol", ["local", "memory"])
+    @pytest.mark.parametrize("parts", [("..", "..", "etc"), ("a/../../etc",)])
+    def test_child_parent_traversal_blocked(self, temp_dir, protocol, parts):
+        """Test that .. in child() parts is blocked as in node(), whatever the backend."""
+        mgr = StorageManager()
+        mount = {"name": "jail", "protocol": protocol}
+        if protocol == "local":
+            mount["path"] = temp_dir
+        mgr.configure([mount])
+        with pytest.raises(ValueError, match="Parent directory traversal"):
+            mgr.node("jail:documents").child(*parts)
+
     def test_root_of_mount(self, storage):
         """Test accessing root of mount."""
         root = storage.node("test:")
